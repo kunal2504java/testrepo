@@ -1,0 +1,347 @@
+Symbio: A Complete Architectural Blueprint
+This document provides a detailed, end-to-end explanation of the Symbio platform, from its foundational concepts to its technical implementation. It is intended to serve as a comprehensive guide for development, scaling, and maintenance.
+
+1. Project Overview & Vision
+Vision: Symbio aims to be the premier online platform for high-value professional collaboration. It is designed to move beyond the transactional nature of traditional freelance marketplaces by fostering trust, ensuring quality, and facilitating seamless project execution.
+
+Core Differentiators:
+
+Quality over Quantity: A curated environment for serious professionals and clients.
+
+Intelligent Matchmaking: AI-driven features to connect the right talent with the right projects.
+
+End-to-End Workspace: An integrated platform that manages everything from project posting and proposals to payments and reviews.
+
+Trust & Transparency: Features like the "Credibility Score" and verification build a foundation of trust.
+
+Primary User Personas:
+
+The Client ("Visionary"): A business owner, startup founder, or project manager who has a clear project goal but needs the right talent to execute it. They value efficiency, reliability, and clear communication.
+
+The Freelancer ("Specialist"): An experienced professional (developer, designer, strategist, etc.) who seeks meaningful, well-compensated work. They value clear project briefs, timely payments, and opportunities to build their professional reputation.
+
+2. Technology Stack
+This stack is chosen for scalability, developer productivity, and robustness.
+
+Frontend:
+
+Framework: React (or Next.js for Server-Side Rendering and SEO benefits).
+
+Styling: Tailwind CSS for utility-first styling.
+
+State Management: Zustand or Redux Toolkit for managing global state (e.g., user authentication).
+
+API Communication: Axios for making structured HTTP requests to the backend.
+
+Backend:
+
+Framework: Node.js with Express.js (or Bolt, which is built upon it).
+
+Language: TypeScript for strong typing and improved code quality.
+
+Authentication: JSON Web Tokens (JWT) with jsonwebtoken library.
+
+Password Hashing: Argon2 for maximum security.
+
+Validation: Zod for schema-based input validation.
+
+Database:
+
+Type: PostgreSQL (a robust relational database).
+
+ORM (Object-Relational Mapping): Prisma for its excellent TypeScript support and type-safe database queries.
+
+AI Integration:
+
+Provider: OpenAI API (for GPT-4 or later models) for generative tasks.
+
+Deployment & DevOps:
+
+Containerization: Docker & Docker Compose.
+
+CI/CD: GitHub Actions.
+
+Hosting:
+
+Frontend: Vercel or Netlify.
+
+Backend: AWS Fargate or Google Cloud Run.
+
+Database: Amazon RDS or Supabase (which includes PostgreSQL).
+
+3. Detailed Frontend Architecture
+The frontend is designed as a decoupled Single-Page Application (SPA) for a fast, modern user experience.
+
+Component-Based Structure: The UI is broken down into reusable components (e.g., Button, ProjectCard, ProfileHeader, MilestoneItem). This promotes consistency and maintainability.
+
+Directory Structure (React):
+
+src/
+├── components/         # Reusable UI components
+├── hooks/              # Custom React hooks (e.g., useAuth)
+├── lib/                # API client setup (Axios instance)
+├── pages/              # Route components (e.g., HomePage, ProjectPage)
+├── services/           # Functions that call backend APIs
+├── store/              # Global state management (Zustand/Redux)
+└── App.jsx
+
+State Management:
+
+Local State (useState, useReducer): Used for component-level state, like form inputs.
+
+Global State (Zustand): Used for application-wide state that is shared across many components, primarily the authenticated user's data (user, isAuthenticated, token).
+
+Routing: React Router is used to handle client-side navigation between pages like /, /projects/:id, /workspace/:id, etc.
+
+API Communication Flow:
+
+A UI component needs data (e.g., ProjectPage needs project details).
+
+It calls a function from a services file (e.g., projectService.getById(id)).
+
+This service function uses the configured Axios instance to make the API call to the backend. The Axios instance is configured to automatically include the JWT in the Authorization header for all protected requests.
+
+The component displays a loading state while the request is in flight.
+
+Upon receiving the data, the component updates its state and re-renders to display the information.
+
+4. Detailed Backend Architecture (MVC-S)
+The backend is built on the Model-View-Controller-Service pattern to ensure a clear separation of concerns.
+
+Model: Defined using Prisma schema (schema.prisma). These are the direct representations of our database tables. Prisma generates a type-safe client that our services will use.
+
+Controller: Handles the HTTP layer. Its job is to parse the incoming request, call the appropriate service with validated data, and send back a formatted JSON response. It knows nothing about the database.
+
+Service: Contains all the business logic. It's the core of the application, orchestrating data from models and performing complex actions.
+
+Directory Structure: (As defined previously in the blueprint).
+
+5. Detailed Database Schema (schema.prisma)
+// schema.prisma
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  role          Role      @default(FREELANCER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  profile       Profile?
+  projectsOwned Project[] @relation("OwnedProjects")
+  proposals     Proposal[]
+  teamMemberships TeamMember[]
+  reviewsGiven  Review[]  @relation("Reviewer")
+  reviewsReceived Review[] @relation("Reviewee")
+  notifications Notification[]
+}
+
+model Profile {
+  userId           String   @id
+  name             String
+  headline         String
+  bio              String?
+  profileImageUrl  String?
+  skills           String[]
+  credibilityScore Int      @default(0)
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Project {
+  id           String     @id @default(cuid())
+  title        String
+  description  String
+  budget       Float
+  status       ProjectStatus @default(OPEN)
+  ownerId      String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  owner        User       @relation("OwnedProjects", fields: [ownerId], references: [id])
+  proposals    Proposal[]
+  teamMembers  TeamMember[]
+  milestones   Milestone[]
+  reviews      Review[]
+}
+
+// ... other models (Proposal, TeamMember, Milestone, Review, Notification) defined similarly with their relationships
+
+enum Role {
+  CLIENT
+  FREELANCER
+}
+
+enum ProjectStatus {
+  DRAFT
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  ARCHIVED
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+}
+
+6. Detailed RESTful API Design
+This section defines the contract between the frontend and backend.
+
+Endpoint
+
+Method
+
+Auth Required
+
+Permissions
+
+Description
+
+Sample Success Response
+
+/api/v1/auth/register
+
+POST
+
+No
+
+N/A
+
+Register a new user.
+
+201 Created with { user, token }
+
+/api/v1/auth/login
+
+POST
+
+No
+
+N/A
+
+Log in an existing user.
+
+200 OK with { user, token }
+
+/api/v1/projects
+
+POST
+
+Yes
+
+Any
+
+Create a new project.
+
+201 Created with the new project object.
+
+/api/v1/projects
+
+GET
+
+No
+
+N/A
+
+Get a list of all open projects.
+
+200 OK with an array of project objects.
+
+/api/v1/projects/:id
+
+GET
+
+No
+
+N/A
+
+Get details for a single project.
+
+200 OK with the project object, including owner profile.
+
+/api/v1/projects/:id/proposals
+
+POST
+
+Yes
+
+FREELANCER
+
+Submit a proposal for a project.
+
+201 Created with the new proposal object.
+
+/api/v1/ai/assist-brief
+
+POST
+
+Yes
+
+CLIENT
+
+Get AI suggestions for a project brief.
+
+200 OK with { suggestions, refinedText }
+
+/api/v1/ai/draft-proposal
+
+POST
+
+Yes
+
+FREELANCER
+
+Get an AI-drafted proposal.
+
+200 OK with { proposalText }
+
+7. Authentication & Security Flow
+Login: A user submits their email and password. The backend verifies the credentials and, if successful, generates two tokens:
+
+Access Token: A short-lived JWT (e.g., 15 minutes) containing the user's ID and role. This is sent to the frontend and stored in memory.
+
+Refresh Token: A long-lived, securely stored token (in an httpOnly cookie) used to get a new access token without requiring the user to log in again.
+
+Authenticated Request: For every request to a protected endpoint, the frontend attaches the Access Token in the Authorization: Bearer <token> header.
+
+Middleware Verification: The backend's isAuthenticated middleware intercepts the request, verifies the token's signature and expiration, and if valid, attaches the user's data to the request object (req.user).
+
+Authorization: The checkPermissions middleware runs next, checking if req.user.role or req.user.id matches the required permissions for that specific action (e.g., only the project owner can edit the project).
+
+8. AI Feature Integration Architecture
+All AI features are implemented via a dedicated AIService on the backend to centralize logic and API calls.
+
+AI Project Brief Assistant:
+
+FE: User types in the project form. A debounced event sends the text to /api/v1/ai/assist-brief.
+
+BE: The AIService receives the text and sends it to the OpenAI API with a detailed prompt asking it to act as a project manager and identify missing information.
+
+FE: The response (suggestions, refinedText) is displayed to the user.
+
+Intelligent Proposal Generator:
+
+FE: A freelancer clicks "Draft with AI" on a project page. A request is sent to /api/v1/ai/draft-proposal with the projectId.
+
+BE: The AIService fetches both the project details and the freelancer's full profile from the database.
+
+BE: It synthesizes this information into a highly specific prompt for the OpenAI API, instructing it to connect the freelancer's exact skills and experience to the project's specific needs.
+
+FE: The generated text is populated into the proposal textarea.
+
+Dynamic "Credibility Score":
+
+BE (Scheduled Job): Once every 24 hours, a ScoreService runs automatically. It queries the database for all freelancers.
+
+BE: For each freelancer, it calculates a score based on a weighted formula (reviews, project completion, etc.). This score is then saved back to the Profile table.
+
+FE: When a freelancer's profile is requested, the API simply returns the pre-calculated credibilityScore from the database. This approach is highly performant as the calculation is not done in real-time on every request.
