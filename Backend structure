@@ -1,0 +1,193 @@
+Prompt: Generate the Backend for the Symbio Collaboration Platform
+Objective:
+Generate the complete, production-ready backend code for the "Symbio" application using the Bolt Framework (or a similar Node.js/Express.js structure). The code must strictly adhere to the MVC-S architecture, directory structure, database schema, and security requirements outlined in the symbio_architecture_and_ui_prompt document.
+
+Core Technologies:
+
+Framework: Node.js with an Express-like framework (e.g., Bolt).
+
+Database ORM: Prisma or Sequelize. Use Prisma for type safety if possible.
+
+Authentication: JSON Web Tokens (JWT).
+
+Password Hashing: Argon2.
+
+Validation: Zod.
+
+Language: JavaScript (or TypeScript for enhanced type safety).
+
+Step-by-Step Implementation Guide:
+Step 1: Project Scaffolding & Setup
+
+Create the complete directory structure exactly as specified in section 1.2 of the architecture document.
+
+Initialize a package.json file and install the following dependencies:
+
+express (or the core Bolt framework library)
+
+dotenv
+
+cors
+
+helmet
+
+jsonwebtoken
+
+argon2
+
+zod
+
+Your chosen ORM (prisma or sequelize and its corresponding database driver, e.g., pg).
+
+Development dependencies: nodemon, jest, supertest.
+
+Create the main application entry point, server.js, to initialize the Express app, apply global middleware (CORS, Helmet, JSON body parser), and start the server.
+
+Step 2: Configuration (config/ and .env)
+
+In the config/ directory, create files to manage application settings (app.js), database connections (database.js), and CORS policy (cors.js).
+
+Create an .env.example file with placeholders for all required environment variables:
+
+PORT
+
+DATABASE_URL
+
+JWT_SECRET
+
+JWT_EXPIRES_IN (for access token)
+
+REFRESH_TOKEN_SECRET
+
+REFRESH_TOKEN_EXPIRES_IN
+
+STRIPE_SECRET_KEY (placeholder)
+
+Step 3: Database Models (app/models/)
+
+Using your chosen ORM, define the schema for every table as specified in section 1.3 of the architecture document. This includes Users, Profiles, Projects, Proposals, TeamMembers, Milestones, Reviews, and Notifications.
+
+Ensure all relationships (one-to-many, many-to-many) are correctly defined. For example, a User has one Profile, and a Project has many Proposals.
+
+Set up the necessary database migration files.
+
+Step 4: Input Validation (app/validators/)
+
+Using Zod, create validation schemas for all user-provided data.
+
+userValidators.js: Create schemas for user registration (email, password, role) and profile updates (name, headline, bio, etc.).
+
+projectValidators.js: Create schemas for project creation and updates.
+
+proposalValidators.js: Create a schema for submitting a proposal.
+
+Step 5: Core Middleware (app/middleware/)
+
+validateSchema.js: Create a higher-order function that takes a Zod schema and returns middleware. This middleware will validate req.body against the schema. If validation fails, it should return a 400 Bad Request response with error details.
+
+isAuthenticated.js: Implement middleware to protect routes. It must:
+
+Extract the JWT from the Authorization: Bearer <token> header.
+
+Verify the token using the JWT_SECRET.
+
+If valid, decode the payload (userId, role) and attach it to the request object (e.g., req.user).
+
+If invalid or missing, respond with 401 Unauthorized.
+
+checkPermissions.js: Implement middleware for authorization.
+
+This middleware should be flexible. For example, it could take a role ('client') or check for ownership.
+
+For ownership checks (e.g., editing a project), it will need to query the database to compare req.user.id with the resource's owner ID (project.ownerId).
+
+If permissions are not met, respond with 403 Forbidden.
+
+Step 6: Business Logic Layer (app/services/)
+
+This is the most critical part. Implement all business logic here, ensuring no database or HTTP logic is present in the controllers.
+
+AuthService.js:
+
+register(userData): Check for existing email, hash password with Argon2, create User and Profile records.
+
+login(credentials): Find user, compare password hash with Argon2.verify(), generate and return access and refresh JWTs.
+
+ProjectService.js:
+
+createProject(data, ownerId): Create a new project record.
+
+getProjectById(id): Fetch a project and its related data (owner profile, team members).
+
+getAllOpenProjects(filters): Implement logic to fetch all projects with status: 'open', including filtering by tags, budget, etc.
+
+updateProject(projectId, data, userId): Update a project after verifying the userId is the owner.
+
+ProposalService.js:
+
+submitProposal(projectId, freelancerId, data): Create a proposal record. Trigger a notification to the project owner.
+
+acceptProposal(proposalId, ownerId): This is a complex transaction. It must:
+
+Verify the ownerId matches the project owner.
+
+Update the proposal status to 'accepted'.
+
+Update the project status to 'in-progress'.
+
+Reject all other pending proposals for that project.
+
+Add the freelancer to the TeamMembers table.
+
+Trigger notifications to all relevant parties.
+
+Implement other services (UserService, WorkspaceService, PaymentService, etc.) with corresponding functions for their logic. PaymentService should have placeholder functions for interacting with the Stripe API.
+
+Step 7: Controller Layer (app/controllers/)
+
+Create "thin" controllers that only handle the HTTP request/response cycle. Each controller method should call its corresponding service.
+
+ProjectController.js:
+
+create(req, res, next):
+
+It should call ProjectService.createProject(req.body, req.user.id).
+
+Wrap the call in a try...catch block, passing errors to next().
+
+On success, send a 201 Created response with the new project data.
+
+Implement all other controllers (AuthController, UserController, etc.) following this lean pattern.
+
+Step 8: Routing (routes/api.js)
+
+Define all API endpoints as listed in section 1.4 of the architecture document.
+
+Group routes logically (e.g., Auth routes, Project routes).
+
+Apply the middleware correctly.
+
+Use the validateSchema middleware first for routes with a request body.
+
+Use isAuthenticated for all routes requiring a logged-in user.
+
+Chain checkPermissions after isAuthenticated for routes requiring specific roles or ownership.
+
+Example Route Definition:
+
+// PUT /api/v1/projects/:id
+router.put(
+    '/projects/:id',
+    isAuthenticated,
+    checkPermissions('owner'), // Middleware checks if req.user.id is the project owner
+    validateSchema(projectUpdateSchema),
+    ProjectController.update
+);
+
+Step 9: Global Error Handling
+
+In server.js, after all routes are defined, create a global error-handling middleware (app.use((err, req, res, next) => { ... })).
+
+This middleware should log the error and send back a structured, generic JSON error response. For validation errors from Zod, it can send a more detailed 400 response. For all other server errors, it should send a 500 Internal Server Error.
+
+By following these instructions precisely, you will generate a backend that is secure, scalable, maintainable, and perfectly aligned with the provided architectural blueprint.
