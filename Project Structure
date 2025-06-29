@@ -1,0 +1,216 @@
+Symbio: Production Architecture & UI/UX Design Guide
+This document provides the detailed technical architecture, API design, and creative design prompt for building "Symbio," a high-end platform for professional collaboration, ready for production.
+
+Part 1: Application Architecture (Using Bolt Framework)
+A clean, scalable architecture is critical for a production application. This structure promotes separation of concerns, making the app easier to manage, test, and grow.
+
+1.1. Core Philosophy: The MVC-S Pattern
+We will use a variation of the Model-View-Controller pattern, known as MVC-S (Model-View-Controller-Service).
+
+Model: Represents your data structures and interacts directly with the database ORM (Object-Relational Mapping).
+
+View: A decoupled frontend Single-Page Application (SPA) built with a framework like React, Vue, or Svelte. It communicates with the Bolt backend via a versioned RESTful API (e.g., /api/v1/...).
+
+Controller: Handles incoming HTTP requests. Its sole responsibilities are to parse the request (including route params, query, and body), call the appropriate Service with validated data, and format the response (success or error). Controllers are kept lean.
+
+Service: Contains all business logic. This is the application's core, handling data manipulation, calculations (like the credibility score), third-party API interactions (Stripe, notification services), and complex workflows.
+
+1.2. Expanded Directory Structure
+This structure is designed for clarity, testability, and scalability.
+
+symbio-backend/
+├── app/
+│   ├── controllers/
+│   │   ├── AuthController.js
+│   │   ├── UserController.js
+│   │   ├── ProjectController.js
+│   │   ├── ProposalController.js
+│   │   └── WorkspaceController.js
+│   ├── models/
+│   │   ├── User.js
+│   │   ├── Profile.js        # Separated from User for more detail
+│   │   ├── Project.js
+│   │   ├── Proposal.js
+│   │   ├── TeamMember.js
+│   │   ├── Milestone.js
+│   │   ├── Review.js
+│   │   └── Notification.js
+│   ├── services/
+│   │   ├── AuthService.js
+│   │   ├── UserService.js
+│   │   ├── ProjectService.js
+│   │   ├── ProposalService.js
+│   │   ├── PaymentService.js      # Integrates with Stripe Connect
+│   │   ├── NotificationService.js # Manages user notifications
+│   │   └── TeamService.js
+│   ├── middleware/
+│   │   ├── isAuthenticated.js     # Checks for valid JWT
+│   │   ├── validateSchema.js      # Validates request against a schema
+│   │   ├── rateLimiter.js
+│   │   └── checkPermissions.js    # Checks user role/ownership
+│   └── validators/
+│       ├── userValidators.js
+│       ├── projectValidators.js
+│       └── proposalValidators.js
+├── config/
+│   ├── database.js
+│   ├── app.js
+│   ├── cors.js                  # CORS configuration
+│   └── services.js              # API keys and configs
+├── routes/
+│   └── api.js                   # Defines all API v1 routes
+├── tests/
+│   ├── unit/                    # Tests for individual services
+│   └── integration/             # Tests for API endpoints
+├── .env.example                 # Example environment file
+├── .env
+├── .gitignore
+├── package.json
+└── server.js                    # Main application entry point
+
+1.3. Expanded Database Schema
+Users: id, email (unique, hashed), password (hashed), role ('client', 'freelancer'), createdAt, updatedAt.
+
+Profiles: userId (PK/FK to Users), name, headline, bio, profileImageUrl, location, portfolioLinks (JSON), skills (JSON array), credibilityScore, socialLinks (JSON).
+
+Projects: id, ownerId (FK to Users), title, description, budget, timeline, tags (JSON array), status ('draft', 'open', 'in-progress', 'completed', 'archived'), createdAt, updatedAt.
+
+Proposals: id, projectId (FK), freelancerId (FK), coverLetter, proposedRate, status ('pending', 'accepted', 'rejected'), createdAt.
+
+TeamMembers: projectId (FK), userId (FK), roleInProject (e.g., 'Designer'), joinedAt. (Composite Primary Key on projectId, userId).
+
+Milestones: id, projectId (FK), title, description, amount, dueDate, status ('pending', 'submitted', 'approved', 'paid'), stripePaymentIntentId.
+
+Reviews: id, projectId (FK), reviewerId (FK), revieweeId (FK), rating (1-5), publicComment, privateFeedback, createdAt.
+
+Notifications: id, userId (FK), type ('proposal_received', 'milestone_approved', 'new_message'), content, isRead, linkTo, createdAt.
+
+1.4. Defined API Endpoints (RESTful)
+A clear API contract is essential for frontend/backend decoupling.
+
+POST /api/v1/auth/register - New user registration.
+
+POST /api/v1/auth/login - User login, returns JWT.
+
+GET /api/v1/users/:id - Get public profile for a user.
+
+PUT /api/v1/users/me - Update the authenticated user's profile.
+
+GET /api/v1/projects - Get a list of open projects (with filtering/search).
+
+POST /api/v1/projects - Create a new project.
+
+GET /api/v1/projects/:id - Get details for a single project.
+
+PUT /api/v1/projects/:id - Update a project (owner only).
+
+POST /api/v1/projects/:id/proposals - Submit a proposal for a project.
+
+GET /api/v1/projects/:id/proposals - List proposals for a project (owner only).
+
+PUT /api/v1/proposals/:proposalId/accept - Accept a proposal, create team, and lock project.
+
+GET /api/v1/workspace/:projectId - Get workspace data (team, milestones).
+
+POST /api/v1/workspace/:projectId/milestones - Create a new milestone.
+
+PUT /api/v1/workspace/milestones/:milestoneId/approve - Approve a milestone, triggering payment processing.
+
+1.5. Robust Security & Vulnerability Checklist
+Authentication & Authorization: Use JWTs with short-lived access tokens and secure httpOnly refresh tokens. Implement middleware to check ownership (e.g., a user can only edit their own profile).
+
+Input Validation: Use Zod to strictly validate all incoming data (body, params, query) at the controller or middleware layer.
+
+Password Security: Use Argon2 for password hashing due to its resistance to GPU-based attacks.
+
+API Security Best Practices: Use helmet for security-related HTTP headers. Configure a strict CORS policy in config/cors.js.
+
+Data Sanitization: Sanitize all user-generated content before rendering in the frontend to prevent XSS.
+
+Rate Limiting: Implement rate limiting on authentication and other sensitive endpoints to prevent brute-force and DoS attacks.
+
+Dependency Management: Regularly run npm audit --production and use Dependabot/Snyk to automatically scan for vulnerable dependencies.
+
+Error Handling: Implement a global error handler to catch unhandled exceptions and return a generic 500 error, avoiding stack trace leaks.
+
+1.6. Deployment & DevOps Strategy
+Containerization: Use Docker to containerize the Bolt backend and the frontend SPA. Use docker-compose for local development to orchestrate the backend, frontend, and a database instance.
+
+CI/CD Pipeline: Use GitHub Actions or GitLab CI to automate testing and deployment. A typical pipeline would be: Push to branch -> Run linter -> Run unit & integration tests -> Build Docker image -> Push to registry -> Deploy to staging/production.
+
+Hosting:
+
+Backend: Host the Bolt container on a service like AWS Fargate, Google Cloud Run, or Heroku for easy scaling.
+
+Frontend: Deploy the static SPA build to a CDN like Vercel, Netlify, or AWS S3/CloudFront for global low-latency access.
+
+Database: Use a managed database service like Amazon RDS, Google Cloud SQL, or Neon.
+
+Part 2: UI/UX Design Prompt (Expanded)
+Core Philosophy: "Elegant Utility & Informed Trust." Every interaction should feel effortless, professional, and secure. The user must always feel in control and understand the consequence of their actions.
+
+Target Audience: Experienced freelance professionals and discerning clients. They expect a seamless digital experience on par with leading FinTech and SaaS platforms.
+
+Color Palette & Typography: (As previously defined - focus on calm, professional tones).
+
+Expanded Key Screens & Animations:
+
+1. The Onboarding Flow (New User):
+
+Goal: To capture essential user information frictionlessly and set them up for success.
+
+Layout: A multi-step, full-screen modal process with a progress bar.
+
+Step 1: Role Selection. "I am looking to hire" vs. "I am looking for work." The UI subtly adapts based on this choice.
+
+Step 2: Profile Basics. Name, headline, location.
+
+Step 3: Skill & Portfolio Sync. "Let's build your profile." A one-click import from LinkedIn, Behance, or GitHub. The UI shows placeholder "shimmer" loaders while it imports data.
+
+Step 4: Welcome. A brief, animated tour highlighting the Dashboard, Project Workspace, and Payments section.
+
+Animation: Each step smoothly slides or fades in. The progress bar animates forward upon completion of a step.
+
+2. The Dashboard / Project Discovery Page:
+
+(As previously defined).
+
+Addition: Advanced Filtering. A filter sidebar that slides in from the left. When filters (budget range slider, skill tags, timeline) are applied, the grid of cards should smoothly and dynamically re-sort using a library like isotope.js or a custom FLIP animation.
+
+3. The Project Creation Flow (Client):
+
+Goal: Guide the client to create a well-defined project brief that attracts high-quality talent.
+
+Layout: A clean, multi-step form.
+
+Step 1: The Basics. Title & Description. AI (optional) could offer to refine the description based on the title.
+
+Step 2: The Details. Define required skills (interactive tag input), timeline (visual date picker), and budget (slider with predefined ranges).
+
+Step 3: Review & Post. A preview of the final project card.
+
+Animation: As the user fills out details, a "live preview" of the project card on the right-hand side updates in real-time.
+
+4. The Project Workspace:
+
+(As previously defined).
+
+Addition: Real-time Chat. A dedicated chat panel within the workspace.
+
+UI: Clean, modern chat interface. Messages from the client and freelancer are styled differently. Support for file attachments with progress indicators on upload.
+
+Animation: New messages slide in from the bottom. The "typing" indicator should be a subtle, three-dot pulsing animation.
+
+5. General Micro-interactions & Component States:
+
+(As previously defined).
+
+Addition: Accessibility (WCAG 2.1 AA).
+
+Focus States: All interactive elements (buttons, links, inputs) must have a highly visible focus state (e.g., a soft, colored ring) for keyboard navigation.
+
+ARIA Attributes: Use proper ARIA (Accessible Rich Internet Applications) attributes for dynamic components like modals, tabs, and custom dropdowns.
+
+Color Contrast: Ensure all text meets the minimum color contrast ratio for readability.
+
+By following this expanded architectural blueprint and design prompt, you are equipped to build a highly scalable, robust, and beautiful application that truly stands out in the professional market.
